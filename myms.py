@@ -91,7 +91,7 @@ def GenerateDecoyLibrary(SpectraLibrary, distance):
                         DecoyLibraryDividedByCharge[('DECOY-'+unswapped_key[0], unswapped_key[1])]['Spectrum'][:,0] += (SpectraLibrary[unswapped_key]['PrecursorMZ']-SpectraLibrary[swapped_key2]['PrecursorMZ'])
                         
                         break
-                swapped_keys.pop(swapped_key)
+                if swapped_key in swapped_keys: swapped_keys.pop(swapped_key)
         DecoyLibrary.update(DecoyLibraryDividedByCharge)
     return DecoyLibrary
 
