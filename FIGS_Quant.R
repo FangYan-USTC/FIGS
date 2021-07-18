@@ -1,5 +1,24 @@
 # Modify based on https://github.com/rpeckner-broad/Specter/blob/master/SpecterQuant.R
 
+FillCoeffs = function(CoeffList, MaxFillNum){
+  if (length(CoeffList) <= 2)
+    return (CoeffList)
+  for (i in 2:length(CoeffList)){
+    if (CoeffList[i]==0 & CoeffList[i-1]>0){
+      j = i+1
+      while(j<=length(CoeffList) & CoeffList[j]==0 & j-i+1<=MaxFillNum)
+        j = j+1
+      
+      if (j<=length(CoeffList) & CoeffList[j]>0 & j-i<=MaxFillNum){
+        growth = (CoeffList[j] - CoeffList[i-1]) / (j-i+1)
+        for (k in i:(j-1))
+          CoeffList[k] = CoeffList[k-1] + growth
+      }
+    }
+  }
+  return (CoeffList)
+}
+
 SparkCoeffs = function(rawCoeffsFilepath,ExperimentHeader=NULL, lib=NULL,MS1=FALSE)
 {
   DIA_RefSpectraCoeffs = read.csv(rawCoeffsFilepath,header=FALSE,stringsAsFactors = FALSE)
@@ -28,13 +47,13 @@ SparkCoeffs = function(rawCoeffsFilepath,ExperimentHeader=NULL, lib=NULL,MS1=FAL
   return(DIA_RefSpectraCoeffs)
 }
 
-QuantifyAllFromCoeffs = function(FIGSData,header) {
+QuantifyAllFromCoeffs = function(FIGSData,header,FillCoeffsFlag) {
   IDs = data.frame(unique(FIGSData[,c('Sequence','Charge'),with=FALSE]))
   IsThereEnoughData = unlist(Map(function(i) EnoughData(FIGSData,IDs,i,RTWindow=FALSE),
                                  seq(1,nrow(IDs))))
   
   f = function(k) {if (IsThereEnoughData[k]) {
-    QuantifyPeptides(FIGSData,IDs,k,header,RTWindow=FALSE)} 
+    QuantifyPeptides(FIGSData,IDs,k,header,FillCoeffsFlag,RTWindow=FALSE)} 
     else {list(0,1,0,0,0,0,1,0,0,0,0,0,0)}}
   
   Quant = Map(f,seq(1,nrow(IDs)))
@@ -57,7 +76,7 @@ QuantifyAllFromCoeffs = function(FIGSData,header) {
   return(Quants)
 }
 
-FindPeaksInData = function(Data,Identifiers,i,header,Multiplexed=FALSE,IntensityCutoff=0,
+FindPeaksInData = function(Data,Identifiers,i,header,FillCoeffsFlag,maxFillNum=1,Multiplexed=FALSE,IntensityCutoff=0,
                            QuantileCutoff=0,RTWindow=TRUE,smooth="rollmean",FilterWindow= 3,KZiters=3) {
   PeptideData = data.frame(Data[list(Identifiers$Sequence[i],Identifiers$Charge[i])])
   
@@ -83,6 +102,10 @@ FindPeaksInData = function(Data,Identifiers,i,header,Multiplexed=FALSE,Intensity
     
     DataOnUniformGrid = DataOnUniformGrid$Coeff
     
+    if (FillCoeffsFlag)
+    {
+      DataOnUniformGrid = FillCoeffs(DataOnUniformGrid, maxFillNum)
+    }
     PeptidePeaks = findpeaks(DataOnUniformGrid, nups = 2, ndowns = 2, npeaks= 10,sortstr = TRUE)
     
     if (smooth == "rollmean")
@@ -90,6 +113,10 @@ FindPeaksInData = function(Data,Identifiers,i,header,Multiplexed=FALSE,Intensity
       KZData = kz(DataOnUniformGrid,m=FilterWindow,k=KZiters)
       KZData[which(DataOnUniformGrid < 1)] = 0
       
+      if (FillCoeffsFlag)
+      {
+        KZData = FillCoeffs(KZData, maxFillNum)
+      }
       PeptidePeaks = findpeaks(KZData, nups = 2, ndowns = 2, npeaks= 10,sortstr = TRUE)
     }
     
@@ -97,7 +124,7 @@ FindPeaksInData = function(Data,Identifiers,i,header,Multiplexed=FALSE,Intensity
   return(PeptidePeaks)
 }
 
-QuantifyPeptides = function(Data,Identifiers,i,header,IntensityCutoff=0,QuantileCutoff=0,RTWindow=TRUE,smooth="rollmean",FilterWindow= 3,KZiters=3) {
+QuantifyPeptides = function(Data,Identifiers,i,header,FillCoeffsFlag,maxFillNum=1,IntensityCutoff=0,QuantileCutoff=0,RTWindow=TRUE,smooth="rollmean",FilterWindow= 3,KZiters=3) {
   PeptideData = data.frame(Data[list(Identifiers$Sequence[i],Identifiers$Charge[i])]) 
   if (RTWindow)
     PeptideData = subset(PeptideData, abs(RetentionTime - RefRetentionTime) < 300)
@@ -108,10 +135,10 @@ QuantifyPeptides = function(Data,Identifiers,i,header,IntensityCutoff=0,Quantile
   
   area = 0
   
-  RawPeaks = FindPeaksInData(Data,Identifiers,i,header,IntensityCutoff=IntensityCutoff,
+  RawPeaks = FindPeaksInData(Data,Identifiers,i,header,FillCoeffsFlag,maxFillNum=maxFillNum,IntensityCutoff=IntensityCutoff,
                              QuantileCutoff=QuantileCutoff,RTWindow=RTWindow,smooth="none",FilterWindow=FilterWindow)
   
-  SmoothPeaks = FindPeaksInData(Data,Identifiers,i,header,IntensityCutoff=IntensityCutoff,
+  SmoothPeaks = FindPeaksInData(Data,Identifiers,i,header,FillCoeffsFlag,maxFillNum=maxFillNum,IntensityCutoff=IntensityCutoff,
                                 QuantileCutoff=QuantileCutoff,RTWindow=RTWindow,smooth=smooth,FilterWindow=FilterWindow,KZiters=KZiters)
   
   BoxTestPval = 1
@@ -133,7 +160,12 @@ QuantifyPeptides = function(Data,Identifiers,i,header,IntensityCutoff=0,Quantile
     
     DataOnUniformGrid = HeaderRange[c("seqNum","retentionTime")]
     DataOnUniformGrid$Coeff = numeric(nrow(DataOnUniformGrid))
-    DataOnUniformGrid$Coeff[which(DataOnUniformGrid$seqNum %in% PeptideData$Scan)] = PeptideData$Coeff  
+    DataOnUniformGrid$Coeff[which(DataOnUniformGrid$seqNum %in% PeptideData$Scan)] = PeptideData$Coeff
+    
+    if (FillCoeffsFlag)
+    {
+      DataOnUniformGrid$Coeff = FillCoeffs(DataOnUniformGrid$Coeff, maxFillNum)
+    }
     
     start = SmoothPeaks[1,3]
     end = SmoothPeaks[1,4]
@@ -180,7 +212,6 @@ EnoughData = function(Data,Identifiers,i,RTWindow=TRUE) {
   }
 }
 
-
 library(kza)
 library(pracma)
 library(zoo)
@@ -190,6 +221,7 @@ library(MASS)
 
 args=commandArgs(TRUE)
 dirPath = args[1]     # The path to "Coeffs.csv"
+FillCoeffsFlag = FALSE
 
 headerPath = strsplit(dirPath,split="/")[[1]]
 headerPath = headerPath[-length(headerPath)]
@@ -210,8 +242,8 @@ setkey(h,seqNum)
 results = SparkCoeffs(resultsPath)
 resultsWithDecoys = SparkCoeffs(decoyResultsPath)
 
-quants = QuantifyAllFromCoeffs(results,header = h)
-quantsWithDecoys = QuantifyAllFromCoeffs(resultsWithDecoys,header=h)
+quants = QuantifyAllFromCoeffs(results,h,FillCoeffsFlag)
+quantsWithDecoys = QuantifyAllFromCoeffs(resultsWithDecoys,h,FillCoeffsFlag)
 
 quantsWithDecoys = rbind(quants,quantsWithDecoys)
 
@@ -220,7 +252,7 @@ quantsWithDecoys = quantsWithDecoys[which(quantsWithDecoys$Quantity > 0),]
 
 if (length(which(quantsWithDecoys$Type == "Decoy")) > 0) {                                                 
   FIGSLDA = lda(Type~ PeakVariance + PeakSkewness + PeakKurtosis + Correlation,
-                   data = quantsWithDecoys)
+                data = quantsWithDecoys)
   
   plda = predict(object = FIGSLDA, newdata = quantsWithDecoys)
   
@@ -233,7 +265,6 @@ if (length(which(quantsWithDecoys$Type == "Decoy")) > 0) {
                  PeakStart = quantsWithDecoys$PeakStart,
                  PeakEnd = quantsWithDecoys$PeakEnd
   )
-  
   
   FDR = function(score)  {
     return(length(which(D$Type == "Decoy" & D$Score > score))/length(which(D$Score > score)))
