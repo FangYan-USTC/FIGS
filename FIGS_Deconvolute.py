@@ -154,8 +154,8 @@ def deconvolute(SpectrumInfo, SpectraLibrary, tol, Top10First, level=1):
 
 if __name__ == "__main__":
     args = sys.argv
-    mzml = args[1]
-    libname = args[2]
+    mzmlPath = args[1]
+    libPath = args[2]
 
     tol = 10
     Top10First = False
@@ -169,7 +169,7 @@ if __name__ == "__main__":
         distance = float(args[5])
 
     print('Loading library...', end = ' ')
-    SpectraLibrary = LoadBlib(os.path.expanduser(libname+'.blib'))
+    SpectraLibrary = LoadBlib(os.path.expanduser(libPath+'.blib'))
     SpectraLibrary = LibraryNormalization(SpectraLibrary)
     print('Finished')
 
@@ -183,7 +183,7 @@ if __name__ == "__main__":
         MinIntensityDic = {k : np.sort(v['Spectrum'][:,1])[-min(10,len(v['Spectrum']))] for k,v in TargetDecoyLibrary.items()}
 
     print('Loading MS2...', end = ' ')
-    MS2 = LoadMS2(mzml+'.mzML')
+    MS2 = LoadMS2(mzmlPath+'.mzML')
     print('Finished')
 
     windows = set(np.array(MS2)[:, 1])
@@ -192,7 +192,7 @@ if __name__ == "__main__":
 
     header = [[(x[1][0] + x[1][1]) / 2, x[2], x[3]] for x in MS2]
     header = pd.DataFrame(header)
-    dirPath = mzml
+    dirPath = mzmlPath
     if not os.path.exists(dirPath):
         os.makedirs(dirPath)
     header.to_csv(os.path.join(dirPath,'header.csv'), index=False, header=False)
@@ -204,7 +204,7 @@ if __name__ == "__main__":
         output.extend(deconvolute(spectrum, DividedLibraries[spectrum[1]], tol*1e-6, Top10First))
     print('Finished')
 
-    dirPath = os.path.join(dirPath, os.path.basename(libname) + '_' + str(tol) + 'ppm')
+    dirPath = os.path.join(dirPath, os.path.basename(libPath) + '_' + str(tol) + 'ppm')
     if not os.path.exists(dirPath):
         os.makedirs(dirPath)
 
