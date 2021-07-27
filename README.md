@@ -1,5 +1,5 @@
 # FIGS
-FIGS (Featured-ions Guided Stoichiometry) is a universal method for peptide quantification of data-independent acquisition mass spectrometry data. FIGS consists of two modules, namely spectral deconvolution and peptide quantification.
+FIGS (Featured Ion-Guided Stoichiometry) is a universal method for peptide quantification of data-independent acquisition mass spectrometry data. FIGS consists of two modules, namely spectral deconvolution and peptide quantification.
 
 #### Parameters
 FIGS_Deconvolute.py
